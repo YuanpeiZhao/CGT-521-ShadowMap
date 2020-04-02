@@ -27,7 +27,7 @@ GLuint quad_vbo = -1;
 GLuint fbo_id = -1;       // framebuffer object,
 GLuint shadow_map_texture_id = -1;
 
-int shadow_map_size = 256; //Lab: this is the size of the shadow map. Try making it bigger.
+int shadow_map_size = 2048; //Lab: this is the size of the shadow map. Try making it bigger.
 
 int win_width = 1024;
 int win_height = 1024;
@@ -49,6 +49,10 @@ glm::mat4 M_fish;
 glm::mat4 M_quad = glm::translate(glm::vec3(0.0f, -0.5f, 0.0f))*glm::rotate(-45.0f, glm::vec3(1.0f, 0.0f, 0.0f))*glm::scale(glm::vec3(0.75f));
 
 int render_mode = 1;
+
+bool use4x4 = false;
+bool displayLit4color = false;
+float softness = 1.5f;
 
 bool check_framebuffer_status();
 
@@ -93,7 +97,7 @@ void draw_pass_1() //draw from light point-of-view
    }
 
    glEnable(GL_POLYGON_OFFSET_FILL);
-   glPolygonOffset(0.0, 0.0); //No offset is being applied when params are 0.0, 0.0. Try changing these numbers to fix the shadow map "acne" problem
+   glPolygonOffset(2.5, 1.0); //No offset is being applied when params are 0.0, 0.0. Try changing these numbers to fix the shadow map "acne" problem
 
    draw_scene(V_light);
    glDisable(GL_POLYGON_OFFSET_FILL);
@@ -112,10 +116,28 @@ void draw_pass_2()
    glActiveTexture(GL_TEXTURE0);
    glBindTexture(GL_TEXTURE_2D, shadow_map_texture_id);
 
+   glPolygonOffset(0.0, 0.0);
+
    const int tex_loc = glGetUniformLocation(shader_program, "shadowmap");
    if(tex_loc != -1)
    {
       glUniform1i(tex_loc, 0); // we bound our shadowmap to texture unit 0
+   }
+
+   const int use4x4_loc = glGetUniformLocation(shader_program, "use4x4");
+   if (use4x4_loc != -1)
+   {
+	   glUniform1i(use4x4_loc, use4x4);
+   }
+   const int displayLit4color_loc = glGetUniformLocation(shader_program, "displayLit4color");
+   if (displayLit4color_loc != -1)
+   {
+	   glUniform1i(displayLit4color_loc, displayLit4color);
+   }
+   const int softness_loc = glGetUniformLocation(shader_program, "softness");
+   if (softness_loc != -1)
+   {
+	   glUniform1f(softness_loc, softness);
    }
 
    const int P_loc = glGetUniformLocation(shader_program, "P");
@@ -226,6 +248,26 @@ void keyboard(unsigned char key, int x, int y)
          reload_shader();     
       break;
 
+	  case 'q':
+	  case 'Q':
+		  use4x4 = !use4x4;
+		break;
+
+	  case 'w':
+	  case 'W':
+		  displayLit4color = !displayLit4color;
+		  break;
+
+	  case '-':
+		  softness -= 0.1f;
+		  if (softness < 0.0f) softness = 0.0f;
+		  break;
+
+	  case '+':
+		  softness += 0.1f;
+		  if (softness > 3.0f) softness = 3.0f;
+		  break;
+
       case '1':
       case '2':
          render_mode = key-'1'+1;     
@@ -248,6 +290,9 @@ void initOpenGl()
    std::cout<<"Press 1 to show scene\n";
    std::cout<<"Press 2 to show shadow map texture\n";
    std::cout<<"Press r to reload shader\n";
+   std::cout << "Press q to toogle between 2x2 and 4x4 PCF\n";
+   std::cout << "Press w to enable/disable lit4 as color\n";
+   std::cout << "Press -/+ to adjust softness\n";
 
    glEnable(GL_DEPTH_TEST);
 
@@ -281,8 +326,14 @@ void initOpenGl()
    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, shadow_map_size, shadow_map_size, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP );
    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP );
-   glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
-   glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+   glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+   glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE,
+	   GL_COMPARE_REF_TO_TEXTURE);
+   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC,
+	   GL_LEQUAL);
+
    glBindTexture(GL_TEXTURE_2D, 0);   
 
    //create the framebuffer object: only has a depth attachment
